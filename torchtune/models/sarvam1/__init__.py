@@ -8,9 +8,12 @@ from ._model_builders import sarvam1_tokenizer, sarvam1, lora_sarvam1
 
 from ._tokenizer import Sarvam1Tokenizer
 
+from ._prompt_template import Sarvam1ChatTemplate
+
 __all__ = [
     "sarvam1",
     "lora_sarvam1",
     "Sarvam1Tokenizer",
     "sarvam1_tokenizer",
+    "Sarvam1ChatTemplate",
 ]
