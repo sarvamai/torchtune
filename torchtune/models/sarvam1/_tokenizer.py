@@ -58,6 +58,7 @@ class Sarvam1Tokenizer(ModelTokenizer, Transform):
         self.stop_tokens = [self.eos_id]
         self._tokenizer.chat_template = prompt_template if prompt_template is not None else PROMPT_TEMPLATE
         self.max_seq_len = max_seq_len
+        self.shown_tokenize_messages_warning = False
     
     @property
     def eos_id(self):
@@ -97,6 +98,22 @@ class Sarvam1Tokenizer(ModelTokenizer, Transform):
         token_ids: List[int],
     ) -> str:
         return self._tokenizer.decode(token_ids)
+    
+    def create_assistant_mask(self, templated_message):
+        tokens = self._tokenizer.tokenize(templated_message)
+        mask = [1] * len(tokens)
+
+        is_assistant = False
+        for i in range(len(tokens)):
+            if tokens[i-1] == '[/INST]' and tokens[i] == '\n':
+                is_assistant = True
+                continue
+            if tokens[i-1] == '</s>' and tokens[i] == '\n':
+                is_assistant = False
+                continue
+            if is_assistant:
+                mask[i] = 0
+        return mask
 
     def tokenize_messages(
         self,
@@ -138,16 +155,16 @@ class Sarvam1Tokenizer(ModelTokenizer, Transform):
         Returns:
             Tuple[List[int], List[bool]]: The tokenized messages
         """
+        if add_bos_tokens or add_end_tokens and not self.shown_tokenize_messages_warning:
+            print("WARNING: You have passed `add_bos_tokens` or `add_end_tokens` to `tokenize_messages`.")
+            print("WARNING: This will change the behavior of the tokenizer. Both arguments will be ignored.")
+            self.shown_tokenize_messages_warning = True
         hf_messages = []
         for message in messages:
             hf_messages.append({"role": message.role, "content": message.content[0]["content"]})
         templated_message = self._tokenizer.apply_chat_template(hf_messages, tokenize=False)
-        hf_output_dict = self._tokenizer(templated_message, add_special_tokens=add_bos_tokens)
-        input_ids = hf_output_dict["input_ids"]
-        attention_mask = [bool(x) for x in hf_output_dict["attention_mask"]]
-        if add_end_tokens:
-            # do nothing for now
-            pass
+        input_ids = self._tokenizer(templated_message, add_special_tokens=False)["input_ids"]
+        attention_mask = [bool(x) for x in self.create_assistant_mask(templated_message)]
         return input_ids, attention_mask
     
     def __call__(
