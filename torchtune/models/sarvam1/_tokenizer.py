@@ -88,6 +88,7 @@ class Sarvam1Tokenizer(ModelTokenizer, Transform):
         """
 
         if trim_leading_whitespace:
+            # newline is token so it can be used to trim leading whitespace
             prefix = "\n"
             encoded_prefix = self._tokenizer.encode(prefix, add_special_tokens=False)
             start_idx = len(encoded_prefix)
