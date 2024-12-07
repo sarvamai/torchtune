@@ -19,7 +19,14 @@ from torchtune.data._prompt_templates import _get_prompt_template
 Model builders build specific instantiations using Llama 3 component builders.
 """
 
-def sarvam1_tokenizer(path: str, max_seq_len: Optional[int] = None, prompt_template: Optional[str] = None) -> Sarvam1Tokenizer:
+
+def sarvam1_tokenizer(
+    path: str,
+    max_seq_len: Optional[int] = None,
+    prompt_template: Optional[
+        _TemplateType
+    ] = "torchtune.models.sarvam1.Sarvam1ChatTemplate",
+) -> Sarvam1Tokenizer:
     """
     Tokenizer for Sarvam1.
 
@@ -32,7 +39,15 @@ def sarvam1_tokenizer(path: str, max_seq_len: Optional[int] = None, prompt_templ
     Returns:
         Sarvam1Tokenizer: Instantiation of the Llama2 tokenizer
     """
-    return Sarvam1Tokenizer(path=path, max_seq_len=max_seq_len, prompt_template=prompt_template)
+    return Sarvam1Tokenizer(
+        path=path,
+        max_seq_len=max_seq_len,
+        prompt_template=(
+            _get_prompt_template(prompt_template)
+            if prompt_template is not None
+            else None
+        ),
+    )
 
 
 def sarvam1() -> TransformerDecoder:

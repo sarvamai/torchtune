@@ -21,6 +21,7 @@ def chat_dataset(
     train_on_input: bool = False,
     new_system_prompt: Optional[str] = None,
     packed: bool = False,
+    split_across_pack: bool = False,
     filter_fn: Optional[Callable] = None,
     split: str = "train",
     **load_dataset_kwargs: Dict[str, Any],
@@ -183,5 +184,7 @@ def chat_dataset(
             raise ValueError(
                 "PackedDataset requires a max_seq_len to be set on the tokenizer."
             )
-        return PackedDataset(ds, max_seq_len=tokenizer.max_seq_len)
+        return PackedDataset(
+            ds, max_seq_len=tokenizer.max_seq_len, split_across_pack=split_across_pack
+        )
     return ds
