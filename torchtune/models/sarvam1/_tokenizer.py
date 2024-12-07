@@ -7,13 +7,11 @@
 from typing import Any, List, Mapping, Optional, Tuple
 
 from torchtune.data import Message, PromptTemplate
-from torchtune.modules.tokenizers import (
-    ModelTokenizer,
-    tokenize_messages_no_special_tokens,
-)
+from torchtune.modules.tokenizers import ModelTokenizer
 from torchtune.modules.transforms import Transform
 from transformers import LlamaTokenizer
 from torchtune.models.sarvam1._prompt_template import Sarvam1ChatTemplate
+from torchtune.models.sarvam1._utils import tokenize_messages_no_special_tokens
 
 
 class Sarvam1Tokenizer(ModelTokenizer, Transform):
@@ -46,14 +44,18 @@ class Sarvam1Tokenizer(ModelTokenizer, Transform):
         self,
         path: str,
         max_seq_len: Optional[int] = None,
-        prompt_template: Optional[str] = Sarvam1ChatTemplate(),
+        prompt_template: Optional[PromptTemplate] = Sarvam1ChatTemplate(),
     ):
         if not path.endswith(".model"):
             raise ValueError(f"Tokenizer path must end with '.model', got {path}")
+
         self._tokenizer = LlamaTokenizer(vocab_file=path, legacy=False)
         self._tokenizer.pad_id = self.eos_id if self.pad_id is None else self.pad_id
+
         self.stop_tokens = [self.eos_id]
+
         self.max_seq_len = max_seq_len
+
         self.prompt_template = prompt_template
 
     @property
@@ -77,16 +79,30 @@ class Sarvam1Tokenizer(ModelTokenizer, Transform):
         text: str,
         add_bos: bool = True,
         add_eos: bool = True,
-        trim_leading_whitespace: bool = False,
+        trim_leading_whitespace: bool = True,
     ) -> List[int]:
         """
         Encode a string into a list of tokens.
         Note:
             Currently this method does not add eos token, and does not trim leading whitespace.
         """
-        tokens = self._tokenizer.encode(text, add_special_tokens=add_bos)
+
+        if trim_leading_whitespace:
+            prefix = "\n"
+            encoded_prefix = self._tokenizer.encode(prefix, add_special_tokens=False)
+            start_idx = len(encoded_prefix)
+            tokens = self._tokenizer.encode(prefix + text, add_special_tokens=False)[
+                start_idx:
+            ]
+        else:
+            tokens = self._tokenizer.encode(text, add_special_tokens=False)
+
+        if add_bos:
+            tokens = [self.bos_id] + tokens
+
         if add_eos:
             tokens.append(self.eos_id)
+
         return tokens
 
     def decode(
@@ -143,12 +159,15 @@ class Sarvam1Tokenizer(ModelTokenizer, Transform):
             if self.prompt_template is not None
             else messages
         )
-        return tokenize_messages_no_special_tokens(
+
+        tokenized_messages = tokenize_messages_no_special_tokens(
             tokenizer=self,
             messages=templated_messages,
             bos_id=self.bos_id if add_start_tokens else None,
             eos_id=self.eos_id if add_end_tokens else None,
         )
+
+        return tokenized_messages
 
     def __call__(
         self, sample: Mapping[str, Any], inference: bool = False
