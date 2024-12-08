@@ -4,14 +4,14 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+import os
+import pickle
 from typing import Any, Callable, Dict, Optional, Union
 
 from torchtune.data._messages import OpenAIToMessages, ShareGPTToMessages
 from torchtune.datasets._packed import PackedDataset
 from torchtune.datasets._sft import SFTDataset
 from torchtune.modules.tokenizers import ModelTokenizer
-import os
-import pickle
 
 
 def chat_dataset(

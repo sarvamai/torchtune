@@ -10,7 +10,6 @@ from torchtune.data._messages import Message
 from torchtune.data._utils import truncate
 from torchtune.modules.tokenizers._utils import ModelTokenizer
 
-
 # https://github.com/pytorch/torchtune/blob/26b2200010a37474015925c5e3f4606435b72dd3/torchtune/modules/tokenizers/_utils.py#L75
 
 

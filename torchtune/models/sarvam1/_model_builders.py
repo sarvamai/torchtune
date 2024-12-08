@@ -6,14 +6,12 @@
 from functools import partial
 from typing import List, Optional
 
+from torchtune.data._prompt_templates import (_get_prompt_template,
+                                              _TemplateType)
 from torchtune.models.llama3._component_builders import llama3, lora_llama3
-
-from torchtune.modules import TransformerDecoder
 from torchtune.models.sarvam1._tokenizer import Sarvam1Tokenizer
+from torchtune.modules import TransformerDecoder
 from torchtune.modules.peft import LORA_ATTN_MODULES
-from torchtune.data._prompt_templates import _TemplateType
-from torchtune.data._prompt_templates import _get_prompt_template
-
 
 """
 Model builders build specific instantiations using Llama 3 component builders.

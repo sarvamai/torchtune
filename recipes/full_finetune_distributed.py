@@ -7,7 +7,6 @@
 import os
 import sys
 import time
-
 from functools import partial
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -15,22 +14,21 @@ from warnings import warn
 
 import torch
 from omegaconf import DictConfig, ListConfig
-
 from torch import nn
 from torch.distributed import destroy_process_group, init_process_group
-
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader, DistributedSampler
+from tqdm import tqdm
+
 from torchtune import config, modules, training, utils
 from torchtune.config._utils import _get_component_from_path
 from torchtune.data import padded_collate_packed
 from torchtune.datasets import ConcatDataset
 from torchtune.recipe_interfaces import FTRecipeInterface
-from torchtune.training import DummyProfiler, PROFILER_KEY
-from torchtune.training.activations import apply_selective_activation_checkpointing
+from torchtune.training import PROFILER_KEY, DummyProfiler
+from torchtune.training.activations import \
+    apply_selective_activation_checkpointing
 from torchtune.training.lr_schedulers import get_lr
-
-from tqdm import tqdm
 
 log = utils.get_logger("DEBUG")
 
