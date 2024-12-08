@@ -9,6 +9,7 @@ import sys
 import time
 
 from functools import partial
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 from warnings import warn
 
@@ -747,7 +748,7 @@ class FullFinetuneRecipeDistributed(FTRecipeInterface):
             ckpt_path = f"epoch_{epoch}"
             if step is not None:
                 ckpt_path = f"{ckpt_path}_step_{step}"
-            self._checkpointer._output_dir = os.path.join(self._checkpointer._output_dir, ckpt_path)
+            self._checkpointer._output_dir = Path(os.path.join(self._output_dir, ckpt_path))
 
             self._checkpointer.save_checkpoint(
                 checkpoint_dict,
@@ -929,8 +930,8 @@ class FullFinetuneRecipeDistributed(FTRecipeInterface):
                     # will include multiple forward / backward passes if gradient accumulation > 1
                     self._profiler.step()
 
-                    if self._save_interval is not None and (idx + 1) % self._save_interval == 0:
-                        self.save_checkpoint(epoch=curr_epoch, step=idx)
+                    if self._save_interval is not None and ((idx + 1) / self._gradient_accumulation_steps) % self._save_interval == 0:
+                        self.save_checkpoint(epoch=curr_epoch, step=int((idx + 1) / self._gradient_accumulation_steps))
 
             self.epochs_run += 1
             self.save_checkpoint(epoch=curr_epoch, step=None)
