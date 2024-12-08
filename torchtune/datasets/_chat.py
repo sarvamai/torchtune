@@ -163,7 +163,7 @@ def chat_dataset(
     if packs_cache_path is not None and not packed:
         raise ValueError("read_packs_from_path can only be used with packed=True.")
 
-    if os.path.exists(packs_cache_path):
+    if packs_cache_path is not None and os.path.exists(packs_cache_path):
         with open(packs_cache_path, "rb") as f:
             packed_ds = pickle.load(f)
             # check instance type
