@@ -61,6 +61,7 @@ def tokenize_messages_no_special_tokens(
     """
     start_of_turn = True
     end_of_turn = False
+    prev_ends_with_space = False
     max_seq_len = tokenizer.max_seq_len  # We define this on ModelTokenizer
     tokenized_messages = []
     mask = []
@@ -73,18 +74,27 @@ def tokenize_messages_no_special_tokens(
             tokenized_messages.append(bos_id)
             mask.append(message.masked)
 
+        # We want to trim leading whitespace on the next message when
+        # (a) it is a continuation of the turn (i.e. not the first message)
+        # (b) the vocabulary explicitly encodes whitespace characters (checked inside
+        #     the base tokenizer's encode method), and
+        # (c) the previous message did not end with a space
+        trim_leading_whitespace = (not start_of_turn) and not prev_ends_with_space
+
         # Tokenize current message, append with masks
         tokens = []
-        for item in message.content:
-            if item["type"] == "text":
-                tokens = tokens + tokenizer.encode(
-                    item["content"],
-                    add_bos=False,
-                    add_eos=False,
-                    trim_leading_whitespace=True,
-                )
-            else:
-                raise RuntimeError(f"Unsupported message content type: {item['type']}")
+
+        text = "".join([item["content"] for item in message.content])
+        tokens = tokenizer.encode(
+            text,
+            add_bos=False,
+            add_eos=False,
+            trim_leading_whitespace=trim_leading_whitespace,
+        )
+        print(text)
+        print(prev_ends_with_space, trim_leading_whitespace)
+        print("--------")
+        prev_ends_with_space = text.endswith(" ")
         tokenized_messages.extend(tokens)
         mask.extend([message.masked] * len(tokens))
 
