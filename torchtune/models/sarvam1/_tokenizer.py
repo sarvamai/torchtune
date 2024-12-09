@@ -151,10 +151,10 @@ class Sarvam1Tokenizer(ModelTokenizer, Transform):
         Returns:
             Tuple[List[int], List[bool]]: The tokenized messages
         """
-        if add_bos_tokens or add_end_tokens and not self.shown_tokenize_messages_warning:
-            print("WARNING: You have passed `add_bos_tokens` or `add_end_tokens` to `tokenize_messages`.")
-            print("WARNING: This will change the behavior of the tokenizer. Both arguments will be ignored.")
-            self.shown_tokenize_messages_warning = True
+        # if add_bos_tokens or add_end_tokens and not self.shown_tokenize_messages_warning:
+        #     print("WARNING: You have passed `add_bos_tokens` or `add_end_tokens` to `tokenize_messages`.")
+        #     print("WARNING: This will change the behavior of the tokenizer. Both arguments will be ignored.")
+        #     self.shown_tokenize_messages_warning = True
         hf_messages = []
         for message in messages:
             hf_messages.append({"role": message.role, "content": message.content[0]["content"]})

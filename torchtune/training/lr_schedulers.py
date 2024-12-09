@@ -62,12 +62,11 @@ def get_linear_schedule_with_warmup(
     optimizer: torch.optim.Optimizer,
     num_warmup_steps: int,
     num_training_steps: int,
+    max_lr: float,
     constant_steps: int = 0,
     min_lr: float = 0.0,
     last_epoch: int = -1,
 ) -> LambdaLR:
-
-    max_lr = optimizer.param_groups[0]["lr"]
 
     def lr_lambda(current_step: int) -> float:
 
