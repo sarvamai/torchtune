@@ -66,7 +66,7 @@ output_dir: /projects/data/mohit_sarvam_ai/torchtune/output-sft/sarvam1-sft-v5-p
 
 checkpointer:
   _component_: torchtune.training.FullModelHFCheckpointer
-  checkpoint_dir: {output_dir}
+  checkpoint_dir: /projects/data/rahul_sarvam_ai/nemo_models/sarvam-1-pt
   checkpoint_files: [
     pytorch_model.bin
   ]
@@ -114,7 +114,7 @@ metric_logger:
   _component_: torchtune.training.metric_logging.WandBLogger
   # the W&B project to log to
   project: torchtune
-log_every_n_steps: 1
+log_every_n_steps: 10
 log_peak_memory_stats: True
 
 # Profiler (disabled)
