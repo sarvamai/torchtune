@@ -88,6 +88,7 @@ optimizer:
 lr_scheduler:
   _component_: torchtune.training.lr_schedulers.get_linear_schedule_with_warmup
   min_lr: 7e-6
+  max_lr: ${optimizer.lr}
   num_warmup_steps: 1000
   constant_steps: 20000
 
