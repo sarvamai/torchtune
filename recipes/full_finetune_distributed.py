@@ -7,29 +7,28 @@
 import os
 import sys
 import time
-
 from functools import partial
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 from warnings import warn
 
 import torch
 from omegaconf import DictConfig, ListConfig
-
 from torch import nn
 from torch.distributed import destroy_process_group, init_process_group
-
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader, DistributedSampler
+from tqdm import tqdm
+
 from torchtune import config, modules, training, utils
 from torchtune.config._utils import _get_component_from_path
 from torchtune.data import padded_collate_packed
 from torchtune.datasets import ConcatDataset
 from torchtune.recipe_interfaces import FTRecipeInterface
-from torchtune.training import DummyProfiler, PROFILER_KEY
-from torchtune.training.activations import apply_selective_activation_checkpointing
+from torchtune.training import PROFILER_KEY, DummyProfiler
+from torchtune.training.activations import \
+    apply_selective_activation_checkpointing
 from torchtune.training.lr_schedulers import get_lr
-
-from tqdm import tqdm
 
 log = utils.get_logger("DEBUG")
 
@@ -747,7 +746,7 @@ class FullFinetuneRecipeDistributed(FTRecipeInterface):
             ckpt_path = f"epoch_{epoch}"
             if step is not None:
                 ckpt_path = f"{ckpt_path}_step_{step}"
-            self._checkpointer._output_dir = os.path.join(self._checkpointer._output_dir, ckpt_path)
+            self._checkpointer._output_dir = Path(os.path.join(self._output_dir, ckpt_path))
 
             self._checkpointer.save_checkpoint(
                 checkpoint_dict,
@@ -929,8 +928,8 @@ class FullFinetuneRecipeDistributed(FTRecipeInterface):
                     # will include multiple forward / backward passes if gradient accumulation > 1
                     self._profiler.step()
 
-                    if self._save_interval is not None and (idx + 1) % self._save_interval == 0:
-                        self.save_checkpoint(epoch=curr_epoch, step=idx)
+                    if self._save_interval is not None and ((idx + 1) / self._gradient_accumulation_steps) % self._save_interval == 0:
+                        self.save_checkpoint(epoch=curr_epoch, step=int((idx + 1) / self._gradient_accumulation_steps))
 
             self.epochs_run += 1
             self.save_checkpoint(epoch=curr_epoch, step=None)
@@ -957,7 +956,7 @@ def recipe_main(cfg: DictConfig) -> None:
             "Distributed finetune recipe should be run via a distributed launcher."
             "If using tune CLI, please specify --nnodes 1 and --nproc_per_node [num_gpus]"
         )
-    init_process_group(backend="gloo" if cfg.device == "cpu" else "nccl")
+    init_process_group("cuda:nccl,cpu:gloo")
     if cfg.get("fsdp_cpu_offload", False):
         # Utilize all available CPU cores for intra-op parallelism. This provides ~2x
         # speed up when benchmarking fused AdamW on CPU

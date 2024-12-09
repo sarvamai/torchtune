@@ -8,11 +8,7 @@ from typing import Any, List, Mapping, Optional, Tuple
 
 from torchtune.data import Message, PromptTemplate
 from torchtune.models.llama2._prompt_template import Llama2ChatTemplate
-from torchtune.modules.tokenizers import (
-    ModelTokenizer,
-    SentencePieceBaseTokenizer,
-    tokenize_messages_no_special_tokens,
-)
+from torchtune.modules.tokenizers import ModelTokenizer
 from torchtune.modules.transforms import Transform
 from transformers import LlamaTokenizer
 
@@ -56,7 +52,7 @@ class Sarvam1Tokenizer(ModelTokenizer, Transform):
         self._tokenizer = LlamaTokenizer(vocab_file=path, legacy=False)
         self._tokenizer.pad_id = self.eos_id if self.pad_id is None else self.pad_id
         self.stop_tokens = [self.eos_id]
-        self._tokenizer.chat_template = prompt_template if prompt_template is not None else PROMPT_TEMPLATE
+        self._tokenizer.chat_template = PROMPT_TEMPLATE
         self.max_seq_len = max_seq_len
         self.shown_tokenize_messages_warning = False
     
