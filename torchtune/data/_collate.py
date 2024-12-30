@@ -510,23 +510,26 @@ def padded_collate_dpo(
     batch: List[Dict[str, List[int]]],
     padding_idx: int = 0,
     ignore_idx: int = CROSS_ENTROPY_IGNORE_IDX,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Pad a batch of sequences for Direct Preference Optimization (DPO).
 
     This function takes a batch of sequences, where each sequence is represented
     as a dictionary with multiple key-value pairs. Each key corresponds to a different
-    sequence component, such as input_ids or labels.
+    sequence component, such as input_ids or labels. It also handles optional log probability
+    values if they are present in the batch.
 
     Args:
         batch (List[Dict[str, List[int]]]): A list of dictionaries, where each dictionary
             represents a sequence with multiple components, 'chosen_input_ids',
             'chosen_labels', 'rejected_input_ids', and 'rejected_labels' are required.
+            Optional keys include 'ref_chosen_logps' and 'ref_rejected_logps'.
         padding_idx (int): Padding index for input ids. Defaults to 0.
         ignore_idx (int): Padding index for labels. Defaults to -100.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]: A tuple containing concatenated and padded
-        input ids and labels.
+        Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]: A tuple containing
+        concatenated and padded input ids, labels, and optional log probabilities for
+        chosen and rejected sequences.
 
     Example:
         >>> batch = [
@@ -543,12 +546,16 @@ def padded_collate_dpo(
         >>>  tensor([[ 6,  7,  8],
         >>>          [16, 17, -100],
         >>>          [ 9, 10, -100],
-        >>>          [18, 19, 20]]))
+        >>>          [18, 19, 20]]),
+        >>>  tensor([]),  # ref_chosen_logps if present
+        >>>  tensor([]))  # ref_rejected_logps if present
     """
     chosen_input_ids = [torch.tensor(ex["chosen_input_ids"]) for ex in batch]
     rejected_input_ids = [torch.tensor(ex["rejected_input_ids"]) for ex in batch]
     chosen_labels = [torch.tensor(ex["chosen_labels"]) for ex in batch]
     rejected_labels = [torch.tensor(ex["rejected_labels"]) for ex in batch]
+    ref_chosen_logps = torch.tensor([ex["ref_chosen_logps"] for ex in batch if "ref_chosen_logps" in ex])
+    ref_rejected_logps = torch.tensor([ex["ref_rejected_logps"] for ex in batch if "ref_rejected_logps" in ex])
 
     to_pad_input_ids = chosen_input_ids + rejected_input_ids
     to_pad_labels = chosen_labels + rejected_labels
@@ -560,4 +567,4 @@ def padded_collate_dpo(
         to_pad_labels, batch_first=True, padding_value=ignore_idx
     )
 
-    return concatenated_input_ids, concatenated_labels
+    return concatenated_input_ids, concatenated_labels, ref_chosen_logps, ref_rejected_logps
