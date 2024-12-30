@@ -399,7 +399,7 @@ class TestPaddedCollateDPO:
                 "rejected_labels": [18, 19, 20],
             },
         ]
-        input_ids, labels = padded_collate_dpo(batch, padding_idx=0, ignore_idx=-100)
+        input_ids, labels, *_ = padded_collate_dpo(batch, padding_idx=0, ignore_idx=-100)
         expected_input_ids = torch.tensor(
             [[1, 2, 3], [11, 12, 0], [7, 8, 0], [15, 16, 17]]
         )
@@ -408,3 +408,38 @@ class TestPaddedCollateDPO:
         )
         assert torch.equal(input_ids, expected_input_ids)
         assert torch.equal(labels, expected_labels)
+
+    def test_dpo_collate_with_precomputed_probs(self):
+        batch = [
+            {
+                "chosen_input_ids": [1, 2, 3],
+                "chosen_labels": [4, 5, 6],
+                "rejected_input_ids": [7, 8],
+                "rejected_labels": [9, 10],
+                "ref_chosen_logps": 0.4,
+                "ref_rejected_logps": 0.5,
+            },
+            {
+                "chosen_input_ids": [11, 12],
+                "chosen_labels": [13, 14],
+                "rejected_input_ids": [15, 16, 17],
+                "rejected_labels": [18, 19, 20],
+                "ref_chosen_logps": 0.7,
+                "ref_rejected_logps": 0.6,
+            },
+        ]
+        input_ids, labels, ref_chosen_logps, ref_rejected_logps = padded_collate_dpo(
+            batch, padding_idx=0, ignore_idx=-100
+        )
+        expected_input_ids = torch.tensor(
+            [[1, 2, 3], [11, 12, 0], [7, 8, 0], [15, 16, 17]]
+        )
+        expected_labels = torch.tensor(
+            [[4, 5, 6], [13, 14, -100], [9, 10, -100], [18, 19, 20]]
+        )
+        expected_ref_chosen_logps = torch.tensor([0.4, 0.7])
+        expected_ref_rejected_logps = torch.tensor([0.5, 0.6])
+        assert torch.equal(input_ids, expected_input_ids)
+        assert torch.equal(labels, expected_labels)
+        assert torch.equal(ref_chosen_logps, expected_ref_chosen_logps)
+        assert torch.equal(ref_rejected_logps, expected_ref_rejected_logps)
