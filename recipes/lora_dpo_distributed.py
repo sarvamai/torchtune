@@ -33,6 +33,7 @@ from torchtune.modules.peft import (
     validate_missing_and_unexpected_for_lora,
 )
 from torchtune.recipe_interfaces import FTRecipeInterface
+from torchtune.datasets.custom_preference import CustomPreferenceDataset
 from tqdm import tqdm
 
 log = utils.get_logger("DEBUG")
@@ -180,6 +181,12 @@ class LoRADPORecipeDistributed(FTRecipeInterface):
         self._resume_from_checkpoint = cfg.resume_from_checkpoint
         self._save_adapter_weights_only = cfg.get("save_adapter_weights_only", False)
         self._gradient_accumulation_steps = cfg.gradient_accumulation_steps
+
+        # Add flags to track precomputed ref probabilities
+        self.precompute_ref_log_probs = cfg.get("precompute_ref_log_probs", False)
+        self.debug_sample_size = cfg.get("debug_sample_size", None)
+        self._precomputed_train_ref_log_probs = False
+        self._precomputed_eval_ref_log_probs = False
 
     def load_checkpoint(self, cfg_checkpointer: DictConfig) -> Dict[str, Any]:
         """
@@ -481,6 +488,20 @@ class LoRADPORecipeDistributed(FTRecipeInterface):
 
         utils.log_rank_zero(log, "Learning rate scheduler is initialized.")
         return lr_scheduler
+    
+    def compute_ref_log_probs(self, batch: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Compute reference model log probabilities for a batch.
+        
+        Args:
+            batch (Tuple[torch.Tensor, torch.Tensor]): Tuple of input_ids and labels
+            
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: Reference log probs for chosen and rejected sequences
+        """
+        with torch.no_grad(), disable_adapter(self._model):
+            chosen_log_probs, rejected_log_probs, _, _ = self.concatenated_forward(self._model, batch)
+            return chosen_log_probs, rejected_log_probs
 
     def _setup_data(
         self,
@@ -493,16 +514,88 @@ class LoRADPORecipeDistributed(FTRecipeInterface):
         DistributedSamplers with Map-style Datasets which fit into memory. Other samplers,
         iterable datasets and streaming datasets are not supported.
         """
-        world_size, rank = utils.get_world_size_and_rank()
-
+        world_size, rank = utils.get_world_size_and_rank() 
+        
+        # Create PreferenceDataset
         if isinstance(cfg_dataset, ListConfig):
             datasets = [
-                config.instantiate(single_cfg_dataset, tokenizer=self._tokenizer)
+                CustomPreferenceDataset(
+                    config.instantiate(single_cfg_dataset, tokenizer=self._tokenizer),  
+                )
                 for single_cfg_dataset in cfg_dataset
             ]
             ds = ConcatDataset(datasets=datasets)
         else:
-            ds = config.instantiate(cfg_dataset, tokenizer=self._tokenizer)
+            ds = CustomPreferenceDataset(
+                config.instantiate(cfg_dataset, tokenizer=self._tokenizer)
+            )
+
+        # Take a small sample for debugging if debug_sample_size is set
+        if self.debug_sample_size is not None:
+            if self._is_rank_zero:
+                log.warning(
+                    f"Running in debug mode with sample size {self.debug_sample_size}. "
+                    "This should only be used for debugging purposes!"
+                )
+            # Take first debug_sample_size examples
+            if isinstance(ds, ConcatDataset):
+                # For ConcatDataset, take samples from first dataset
+                ds.datasets[0] = ds.datasets[0].select(range(min(self.debug_sample_size, len(ds.datasets[0]))))
+            else:
+                # Update this line to handle datasets without a 'select' method
+                ds = torch.utils.data.Subset(ds, range(min(self.debug_sample_size, len(ds))))
+
+        # Precompute reference probabilities if enabled
+        if self.precompute_ref_log_probs and not self._precomputed_train_ref_log_probs:
+            utils.log_rank_zero(log, "Precomputing reference log probabilities for training dataset...")
+            
+            # Create temporary dataloader for precomputation
+            temp_sampler = DistributedSampler(ds, num_replicas=world_size, rank=rank, shuffle=False)
+            temp_dataloader = DataLoader(
+                dataset=ds,
+                batch_size=batch_size,
+                sampler=temp_sampler,
+                drop_last=False,
+                collate_fn=partial(
+                    padded_collate_dpo,
+                    padding_idx=self._tokenizer.pad_id,
+                    ignore_idx=CROSS_ENTROPY_IGNORE_IDX,
+                ),
+            )
+
+            ref_chosen_logps = []
+            ref_rejected_logps = []
+            for batch in tqdm(temp_dataloader, desc="Computing reference log probs", disable=not self._is_rank_zero):
+                ref_chosen_logp, ref_rejected_logp = self.compute_ref_log_probs(batch)
+                ref_chosen_logps.append(ref_chosen_logp.cpu())
+                ref_rejected_logps.append(ref_rejected_logp.cpu())
+
+                # Clear cache to avoid OOM
+                torch.cuda.empty_cache()
+
+            # Gather and process results
+            all_ref_chosen_logps = torch.cat(ref_chosen_logps)
+            all_ref_rejected_logps = torch.cat(ref_rejected_logps)
+
+            # Gather across all ranks
+            gathered_chosen = [torch.zeros_like(all_ref_chosen_logps) for _ in range(world_size)]
+            gathered_rejected = [torch.zeros_like(all_ref_rejected_logps) for _ in range(world_size)]
+            
+            torch.distributed.all_gather(gathered_chosen, all_ref_chosen_logps)
+            torch.distributed.all_gather(gathered_rejected, all_ref_rejected_logps)
+
+            all_ref_chosen_logps = torch.cat(gathered_chosen)
+            all_ref_rejected_logps = torch.cat(gathered_rejected)
+            
+            # Add reference log probs to the dataset
+            target_dataset = ds.dataset if isinstance(ds, torch.utils.data.Subset) else ds
+            if isinstance(target_dataset, ConcatDataset):
+                target_dataset.datasets[0].add_reference_log_probs(all_ref_chosen_logps, all_ref_rejected_logps)
+            else:
+                target_dataset.add_reference_log_probs(all_ref_chosen_logps, all_ref_rejected_logps)
+
+            self._precomputed_train_ref_log_probs = True
+            torch.distributed.barrier()
 
         sampler = DistributedSampler(
             ds, num_replicas=world_size, rank=rank, shuffle=shuffle, seed=0
@@ -627,7 +720,7 @@ class LoRADPORecipeDistributed(FTRecipeInterface):
         Returns:
             Tuple of chosen log probs, rejected log probs, chosen logits, rejected logits.
         """
-        concatenated_input_ids, concatenated_labels = batch
+        concatenated_input_ids, concatenated_labels, *_ = batch
         concatenated_input_ids = concatenated_input_ids.to(self._device)
         concatenated_labels = concatenated_labels.to(self._device)
 
@@ -696,13 +789,15 @@ class LoRADPORecipeDistributed(FTRecipeInterface):
                 # deleting logits here helps reduce (peak) memory usage - we only need them for metric logging
                 del policy_chosen_logits, policy_rejected_logits
 
-                with torch.no_grad(), disable_adapter(self._model):
-                    (
-                        reference_chosen_log_probs,
-                        reference_rejected_log_probs,
-                        _,
-                        _,
-                    ) = self.concatenated_forward(self._model, batch)
+                # Use precomputed ref probabilities from dataset if available
+                if self.precompute_ref_log_probs:
+                    # Get reference log probs directly from the batch
+                    _, _, reference_chosen_log_probs, reference_rejected_log_probs = batch
+                    reference_chosen_log_probs = reference_chosen_log_probs.to(self._device)
+                    reference_rejected_log_probs = reference_rejected_log_probs.to(self._device)
+                else:
+                    reference_chosen_log_probs, reference_rejected_log_probs = self.compute_ref_log_probs(batch)
+
                 loss, chosen_rewards, rejected_rewards = self._loss_fn(
                     policy_chosen_log_probs,
                     policy_rejected_log_probs,
@@ -806,7 +901,6 @@ def recipe_main(cfg: DictConfig) -> None:
     recipe.setup(cfg=cfg)
     recipe.train()
     recipe.cleanup()
-
 
 if __name__ == "__main__":
     sys.exit(recipe_main())
