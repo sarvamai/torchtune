@@ -851,7 +851,21 @@ class FullFinetuneRecipeDistributed(FTRecipeInterface):
                     self._profiler.step()
 
                     if self._save_interval is not None and ((idx + 1) / self._gradient_accumulation_steps) % self._save_interval == 0:
-                        self.save_checkpoint(epoch=curr_epoch, step=int((idx + 1) / self._gradient_accumulation_steps))
+                        self._checkpoint_client.save_checkpoint(
+                            model=self._model,
+                            optimizer=(
+                                self._optimizer
+                                if not self._optimizer_in_bwd
+                                else self._optim_ckpt_wrapper
+                            ),
+                            training_progress=TrainingProgress(
+                                seed=self.seed,
+                                epochs_run=self.epochs_run,
+                                total_epochs=self.total_epochs,
+                                max_steps_per_epoch=self.max_steps_per_epoch,
+                            ),
+                            epoch=curr_epoch,
+                        )
 
             self.epochs_run += 1
             self._checkpoint_client.save_checkpoint(
